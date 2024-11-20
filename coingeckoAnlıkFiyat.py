@@ -150,8 +150,87 @@ root.mainloop()
 
 
 
-#v5 Coin sayfasını siliyordu----------------------------------------------------------------------------------------------------------------
+#v6.01---------------------------------------------------------------------------------------------------------------------------------------------
+#coinmarketcap ---------------------------------------------------------------------------------------------------------------------------------------
+# import requests
+# import pandas as pd
 
+# # CoinMarketCap API bilgileri
+# api_key = "YOUR_API_KEY"  # CoinMarketCap API anahtarınızı buraya ekleyin
+# api_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
+
+# headers = {
+#     "Accepts": "application/json",
+#     "X-CMC_PRO_API_KEY": api_key,
+# }
+
+# params = {
+#     "start": "1",
+#     "limit": "10",
+#     "convert": "USD"
+# }
+
+# def fetch_coinmarketcap_data():
+#     try:
+#         response = requests.get(api_url, headers=headers, params=params)
+#         response.raise_for_status()
+#         data = response.json()
+
+#         # Verileri işleme
+#         coins = data["data"]
+#         formatted_data = []
+#         for coin in coins:
+#             formatted_data.append({
+#                 "Coin": coin["name"],
+#                 "Sembol": coin["symbol"],
+#                 "Fiyat (USD)": f'{coin["quote"]["USD"]["price"]:.2f}',
+#                 "Değişim (24h)": f'{coin["quote"]["USD"]["percent_change_24h"]:.2f}%',
+#                 "Piyasa Değeri": f'{coin["quote"]["USD"]["market_cap"]:.2f}',
+#                 "Hacim (24h)": f'{coin["quote"]["USD"]["volume_24h"]:.2f}'
+#             })
+
+#         df = pd.DataFrame(formatted_data)
+#         print(df)
+#     except Exception as e:
+#         print(f"Hata: {e}")
+
+# fetch_coinmarketcap_data()
+
+
+
+
+
+
+#v6.02---------------------------------------------------------------------------------------------------------------------------------------------
+#tradinview ------------------------------------------------------------------------------------------------------------------------------------
+# from tvDatafeed import TvDatafeed, Interval
+
+# # Kullanıcı bilgileri
+# username = "your_username"  # TradingView kullanıcı adı
+# password = "your_password"  # TradingView şifresi
+
+# tv = TvDatafeed(username, password)
+
+# # Veri çekme (örnek BTC/USDT)
+# def fetch_tradingview_data():
+#     try:
+#         data = tv.get_hist(
+#             symbol="BTCUSDT",
+#             exchange="BINANCE",
+#             interval=Interval.in_daily,
+#             n_bars=100
+#         )
+#         print(data)
+#     except Exception as e:
+#         print(f"Hata: {e}")
+
+# fetch_tradingview_data()
+
+
+
+
+#v5 Coin sayfasını siliyordu----------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------------------------
 # import requests
 # import pandas as pd
 # from tkinter import Tk, Label, Entry, Button, Listbox, messagebox
