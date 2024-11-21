@@ -1,5 +1,5 @@
-# pyinstaller --onefile --noconsole --exclude-module tkinter --exclude-module matplotlib --clean VadeBulma.py
-# pyinstaller --onefile --noconsole --upx-dir /path/to/upx VadeBulma.py   
+# pyinstaller --onefile --noconsole --exclude-module tkinter --exclude-module matplotlib --clean coingeckoAnlıkFiyat.py
+# pyinstaller --onefile --noconsole --upx-dir /path/to/upx coingeckoAnlıkFiyat.py   
 
 #v9  ekrana da bilgi ver  coin sıralamasının verilen listeye göre olması---------------------------------------------------------------------------------------------
 
