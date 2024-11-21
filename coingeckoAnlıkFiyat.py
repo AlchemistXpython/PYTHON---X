@@ -1,8 +1,11 @@
-#v6  Coin sayfasını olduğu gibi bırak---------------------------------------------------------------------------------------------
+# pyinstaller --onefile --noconsole --exclude-module tkinter --exclude-module matplotlib --clean VadeBulma.py
+# pyinstaller --onefile --noconsole --upx-dir /path/to/upx VadeBulma.py   
+
+#v9  ekrana da bilgi ver  coin sıralamasının verilen listeye göre olması---------------------------------------------------------------------------------------------
 
 import requests
 import pandas as pd
-from tkinter import Tk, Label, Entry, Button, Listbox, messagebox
+from tkinter import Tk, Label, Entry, Button, Listbox, messagebox, Frame, Toplevel
 from openpyxl import load_workbook
 import logging
 
@@ -98,6 +101,85 @@ def fetch_crypto_data():
         messagebox.showerror("Hata", f"Veri alınırken bir hata oluştu: {e}")
         logging.error(f"Veri alınırken bir hata oluştu: {e}")
 
+def search_and_display():
+    """Verilen listeye göre coinleri sıralar ve mevcut pencerede tabloyu günceller."""
+    if not coin_list:
+        messagebox.showwarning("Uyarı", "Önce coin ekleyin.")
+        return
+
+    api_url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {
+        "vs_currency": "usd",
+        "ids": ",".join(coin_list),  # Listedeki coinleri API'ye gönder
+        "order": "market_cap_desc",
+        "sparkline": False
+    }
+
+    try:
+        response = requests.get(api_url, params=params)
+        response.raise_for_status()  # HTTP hatalarını kontrol et
+
+        data = response.json()
+        if not data:
+            messagebox.showwarning("Uyarı", "API'den geçerli bir veri alınamadı.")
+            logging.warning("API'den geçerli veri alınamadı.")
+            return
+
+        formatted_data = []
+        for coin in data:
+            formatted_data.append({
+                "Coin": coin.get("name", "Bilinmiyor"),
+                "Fiyat (USD)": f'${coin.get("current_price", 0):.6f}',
+                "Değişim (24h)": f'{coin.get("price_change_percentage_24h", 0):.2f}%',
+                "Hacim (24h)": f'${coin.get("total_volume", 0):,}'
+            })
+
+        # Pandas ile tablo oluşturma
+        df = pd.DataFrame(formatted_data)
+        logging.info(f"Arama sonucu: {df}")
+
+        # Küçük harfe çevirip sıralama yapıyoruz
+        df['Coin'] = df['Coin'].apply(lambda x: x.lower())  # Coin isimlerini küçük harfe çeviriyoruz
+        df['Değişim (24h)'] = df['Değişim (24h)'].apply(lambda x: float(x.strip('%')))  # Değişim yüzdesini sayıya çeviriyoruz
+
+        # Değişim yüzdesine göre sıralıyoruz
+        df_sorted = df.sort_values(by='Değişim (24h)', ascending=False)
+
+        # Eğer yeni pencere yoksa açalım
+        if not hasattr(search_and_display, "new_window") or not search_and_display.new_window.winfo_exists():
+            search_and_display.new_window = Toplevel(root)
+            search_and_display.new_window.title("Coin Arama Sonuçları")
+            search_and_display.new_window.geometry("600x400")
+
+            # Yenile Butonu (üst solda olacak)
+            def refresh_data():
+                """Veriyi yenile ve sıralı göster."""
+                search_and_display()  # Veriyi güncelle
+
+            Button(search_and_display.new_window, text="Yenile", command=refresh_data).grid(row=0, column=0, padx=5, pady=5, sticky='w')
+
+            # Başlıkları ekleyelim
+            Label(search_and_display.new_window, text="Coin İsmi", width=20, anchor='w').grid(row=1, column=0, padx=5, pady=5)
+            Label(search_and_display.new_window, text="Fiyat (USD)", width=20, anchor='c').grid(row=1, column=1, padx=5, pady=5)
+            Label(search_and_display.new_window, text="Değişim (24h)", width=20, anchor='c').grid(row=1, column=2, padx=5, pady=5)
+            Label(search_and_display.new_window, text="Hacim (24h)", width=20, anchor='c').grid(row=1, column=3, padx=5, pady=5)
+
+        # Verileri tablo olarak ekleyelim
+        for idx, row in df_sorted.iterrows():
+            Label(search_and_display.new_window, text=row['Coin'], width=20, anchor='w').grid(row=idx+2, column=0, padx=5, pady=5)
+            Label(search_and_display.new_window, text=row['Fiyat (USD)'], width=20, anchor='c').grid(row=idx+2, column=1, padx=5, pady=5)
+            Label(search_and_display.new_window, text=f'{row["Değişim (24h)"]}%', width=20, anchor='c').grid(row=idx+2, column=2, padx=5, pady=5)
+            Label(search_and_display.new_window, text=row['Hacim (24h)'], width=20, anchor='c').grid(row=idx+2, column=3, padx=5, pady=5)
+
+        logging.info("Tablo yeni pencerede görüntülendi.")
+
+    except requests.exceptions.HTTPError as e:
+        messagebox.showerror("Hata", f"API hatası: {e}")
+        logging.error(f"API hatası: {e}")
+    except Exception as e:
+        messagebox.showerror("Hata", f"Veri alınırken bir hata oluştu: {e}")
+        logging.error(f"Veri alınırken bir hata oluştu: {e}")
+
 def load_from_excel():
     """Excel'deki coin isimlerini listeye ekler."""
     try:
@@ -130,7 +212,7 @@ def clear_list():
 # GUI oluşturma
 root = Tk()
 root.title("Kripto Veri Çekme")
-root.geometry("400x550")
+root.geometry("400x650")
 
 Label(root, text="Coin İsmini Gir ve Ekle:").pack(pady=5)
 entry = Entry(root, width=40)
@@ -142,11 +224,605 @@ Label(root, text="Eklenen Coinler:").pack(pady=10)
 coin_listbox = Listbox(root, width=50, height=15)
 coin_listbox.pack(pady=5)
 
-Button(root, text="Veri Çek ve Sheet1'e Yaz", command=fetch_crypto_data).pack(pady=10)
+# Button'ları ortalamak için Frame kullanalım
+button_frame = Frame(root)
+button_frame.pack(pady=20)
+
+Button(button_frame, text="Veri Çek ve Sheet1'e Yaz", command=fetch_crypto_data).pack(side="left", padx=5)
+Button(button_frame, text="Yeni Sayfa ve Ara", command=search_and_display).pack(side="left", padx=5)
+
 Button(root, text="Listeyi Temizle", command=clear_list).pack(pady=5)
 Button(root, text="Excel'den Yükle", command=load_from_excel).pack(pady=10)
 
 root.mainloop()
+
+
+
+
+
+
+
+#v8  ekrana da bilgi ver  ve çıkan datanın hizalanması---------------------------------------------------------------------------------------------
+
+# import requests
+# import pandas as pd
+# from tkinter import Tk, Label, Entry, Button, Listbox, messagebox, Frame, Toplevel
+# from openpyxl import load_workbook
+# import logging
+
+# # Logging ayarları
+# logging.basicConfig(filename="crypto_app.log", level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# # Coin listesi
+# coin_list = []
+# excel_file = "crypto_data.xlsx"
+
+# def add_coin():
+#     """Coin ismini listeye ekler."""
+#     coin_name = entry.get().strip().lower()
+#     if not coin_name:
+#         messagebox.showwarning("Uyarı", "Lütfen bir coin ismi girin.")
+#         return
+
+#     if coin_name in coin_list:
+#         messagebox.showwarning("Uyarı", "Bu coin zaten listede mevcut.")
+#         return
+
+#     coin_list.append(coin_name)
+#     coin_listbox.insert("end", coin_name)
+#     entry.delete(0, "end")
+#     logging.info(f"Coin eklendi: {coin_name}")
+
+# def fetch_crypto_data():
+#     """Listedeki coinler için veri çeker ve Excel'e yaz."""
+#     if not coin_list:
+#         messagebox.showwarning("Uyarı", "Önce coin ekleyin.")
+#         return
+
+#     api_url = "https://api.coingecko.com/api/v3/coins/markets"
+#     params = {
+#         "vs_currency": "usd",
+#         "ids": ",".join(coin_list),  # Listedeki coinleri API'ye gönder
+#         "order": "market_cap_desc",
+#         "sparkline": False
+#     }
+
+#     try:
+#         response = requests.get(api_url, params=params)
+#         response.raise_for_status()  # HTTP hatalarını kontrol et
+
+#         data = response.json()
+#         if not data:
+#             messagebox.showwarning("Uyarı", "API'den geçerli bir veri alınamadı. Coin isimlerini kontrol edin.")
+#             logging.warning("API'den geçerli veri alınamadı.")
+#             return
+
+#         formatted_data = []
+#         current_date = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")  # Tarih ve saat
+
+#         for coin in data:
+#             formatted_data.append({
+#                 "Tarih": current_date,
+#                 "Coin": coin.get("name", "Bilinmiyor"),
+#                 "Değişim (24h)": f'{coin.get("price_change_percentage_24h", 0):.2f}%',
+#                 "Fiyat (USD)": f'${coin.get("current_price", 0):.6f}',
+#                 "Hacim (24h)": f'${coin.get("total_volume", 0):,}',
+#                 "Piyasa Değeri (USD)": f'${coin.get("market_cap", 0):,}',  # Piyasa değeri
+#                 "Dolaşımdaki Arz": f'{coin.get("circulating_supply", 0):,}',
+#                 "Toplam Arz": coin.get("total_supply", "Bilinmiyor")
+#             })
+
+#         df = pd.DataFrame(formatted_data)
+#         logging.info(f"İşlenen veri: {df}")
+
+#         # Excel'e veri yazma
+#         try:
+#             with pd.ExcelWriter(excel_file, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
+#                 sheet = writer.sheets.get("Sheet1", None)
+#                 startrow = sheet.max_row if sheet else 0
+#                 if startrow == 0:  # Başlıkları yalnızca bir kez yaz
+#                     df.to_excel(writer, sheet_name="Sheet1", index=False)
+#                 else:
+#                     df.to_excel(writer, sheet_name="Sheet1", index=False, header=False, startrow=startrow)
+#                 messagebox.showinfo("Başarılı", "Veriler başarıyla Excel dosyasına eklendi.")
+#                 logging.info("Veriler Excel dosyasına başarıyla yazıldı.")
+#         except FileNotFoundError:
+#             with pd.ExcelWriter(excel_file, engine="openpyxl") as writer:
+#                 df.to_excel(writer, sheet_name="Sheet1", index=False)
+#             messagebox.showinfo("Başarılı", "Yeni bir Excel dosyası oluşturuldu ve veriler yazıldı.")
+#             logging.info("Yeni Excel dosyası oluşturuldu ve veriler yazıldı.")
+
+#     except requests.exceptions.HTTPError as e:
+#         if response.status_code == 429:
+#             messagebox.showerror("Hata", "API limitine ulaşıldı. Lütfen daha sonra tekrar deneyin.")
+#         else:
+#             messagebox.showerror("Hata", f"API hatası: {response.status_code}")
+#         logging.error(f"API hatası: {e}")
+#     except Exception as e:
+#         messagebox.showerror("Hata", f"Veri alınırken bir hata oluştu: {e}")
+#         logging.error(f"Veri alınırken bir hata oluştu: {e}")
+
+# def search_and_display():
+#     """Belirtilen coinleri arar ve yeni sayfada tablo olarak gösterir."""
+#     if not coin_list:
+#         messagebox.showwarning("Uyarı", "Önce coin ekleyin.")
+#         return
+
+#     api_url = "https://api.coingecko.com/api/v3/coins/markets"
+#     params = {
+#         "vs_currency": "usd",
+#         "ids": ",".join(coin_list),  # Listedeki coinleri API'ye gönder
+#         "order": "market_cap_desc",
+#         "sparkline": False
+#     }
+
+#     try:
+#         response = requests.get(api_url, params=params)
+#         response.raise_for_status()  # HTTP hatalarını kontrol et
+
+#         data = response.json()
+#         if not data:
+#             messagebox.showwarning("Uyarı", "API'den geçerli bir veri alınamadı.")
+#             logging.warning("API'den geçerli veri alınamadı.")
+#             return
+
+#         formatted_data = []
+#         for coin in data:
+#             formatted_data.append({
+#                 "Coin": coin.get("name", "Bilinmiyor"),
+#                 "Fiyat (USD)": f'${coin.get("current_price", 0):.6f}',
+#                 "Değişim (24h)": f'{coin.get("price_change_percentage_24h", 0):.2f}%',
+#                 "Hacim (24h)": f'${coin.get("total_volume", 0):,}'
+#             })
+
+#         # Pandas ile tablo oluşturma
+#         df = pd.DataFrame(formatted_data)
+#         logging.info(f"Arama sonucu: {df}")
+
+#         # Yeni pencere açma
+#         new_window = Toplevel(root)
+#         new_window.title("Coin Arama Sonuçları")
+#         new_window.geometry("600x400")
+
+#         # Başlıkları ekleyelim
+#         Label(new_window, text="Coin İsmi", width=20, anchor='w').grid(row=0, column=0, padx=5, pady=5)
+#         Label(new_window, text="Fiyat (USD)", width=20, anchor='c').grid(row=0, column=1, padx=5, pady=5)
+#         Label(new_window, text="Değişim (24h)", width=20, anchor='c').grid(row=0, column=2, padx=5, pady=5)
+#         Label(new_window, text="Hacim (24h)", width=20, anchor='c').grid(row=0, column=3, padx=5, pady=5)
+
+#         # Verileri tablo olarak ekleyelim
+#         for idx, row in df.iterrows():
+#             Label(new_window, text=row['Coin'], width=20, anchor='w').grid(row=idx+1, column=0, padx=5, pady=5)
+#             Label(new_window, text=row['Fiyat (USD)'], width=20, anchor='c').grid(row=idx+1, column=1, padx=5, pady=5)
+#             Label(new_window, text=row['Değişim (24h)'], width=20, anchor='c').grid(row=idx+1, column=2, padx=5, pady=5)
+#             Label(new_window, text=row['Hacim (24h)'], width=20, anchor='c').grid(row=idx+1, column=3, padx=5, pady=5)
+
+#         logging.info("Tablo yeni pencerede görüntülendi.")
+
+#     except requests.exceptions.HTTPError as e:
+#         messagebox.showerror("Hata", f"API hatası: {e}")
+#         logging.error(f"API hatası: {e}")
+#     except Exception as e:
+#         messagebox.showerror("Hata", f"Veri alınırken bir hata oluştu: {e}")
+#         logging.error(f"Veri alınırken bir hata oluştu: {e}")
+
+# def load_from_excel():
+#     """Excel'deki coin isimlerini listeye ekler."""
+#     try:
+#         workbook = load_workbook(excel_file)
+#         if "Coin" in workbook.sheetnames:
+#             sheet = workbook["Coin"]
+#             for row in sheet.iter_rows(min_row=2, max_col=1, values_only=True):
+#                 coin_name = row[0]
+#                 if coin_name and coin_name.strip().lower() not in coin_list:  # Boşlukları temizle
+#                     coin_list.append(coin_name.strip().lower())
+#                     coin_listbox.insert("end", coin_name.strip().lower())
+#             messagebox.showinfo("Başarılı", "Excel'den coin isimleri yüklendi.")
+#             logging.info("Excel'den coin isimleri başarıyla yüklendi.")
+#         else:
+#             messagebox.showwarning("Hata", "'Coin' isimli sayfa bulunamadı.")
+#             logging.warning("'Coin' isimli sayfa bulunamadı.")
+#     except FileNotFoundError:
+#         messagebox.showerror("Hata", f"{excel_file} dosyası bulunamadı.")
+#         logging.error(f"Excel dosyası bulunamadı: {excel_file}")
+#     except Exception as e:
+#         messagebox.showerror("Hata", f"Excel yüklenirken bir hata oluştu: {e}")
+#         logging.error(f"Excel yüklenirken bir hata oluştu: {e}")
+
+# def clear_list():
+#     """Coin listesini temizler."""
+#     coin_list.clear()
+#     coin_listbox.delete(0, "end")
+#     logging.info("Coin listesi temizlendi.")
+
+# # GUI oluşturma
+# root = Tk()
+# root.title("Kripto Veri Çekme")
+# root.geometry("400x650")
+
+# Label(root, text="Coin İsmini Gir ve Ekle:").pack(pady=5)
+# entry = Entry(root, width=40)
+# entry.pack(pady=5)
+
+# Button(root, text="Ekle", command=add_coin).pack(pady=5)
+
+# Label(root, text="Eklenen Coinler:").pack(pady=10)
+# coin_listbox = Listbox(root, width=50, height=15)
+# coin_listbox.pack(pady=5)
+
+# # Button'ları ortalamak için Frame kullanalım
+# button_frame = Frame(root)
+# button_frame.pack(pady=20)
+
+# Button(button_frame, text="Veri Çek ve Sheet1'e Yaz", command=fetch_crypto_data).pack(side="left", padx=5)
+# Button(button_frame, text="Yeni Sayfa ve Ara", command=search_and_display).pack(side="left", padx=5)
+
+# Button(root, text="Listeyi Temizle", command=clear_list).pack(pady=5)
+# Button(root, text="Excel'den Yükle", command=load_from_excel).pack(pady=10)
+
+# root.mainloop()
+
+
+
+#v7  ekrana da bilgi ver ---------------------------------------------------------------------------------------------
+
+# import requests
+# import pandas as pd
+# from tkinter import Tk, Label, Entry, Button, Listbox, messagebox, Frame  # Frame'i ekledik
+# from openpyxl import load_workbook
+# import logging
+
+# # Logging ayarları
+# logging.basicConfig(filename="crypto_app.log", level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# # Coin listesi
+# coin_list = []
+# excel_file = "crypto_data.xlsx"
+
+# def add_coin():
+#     """Coin ismini listeye ekler."""
+#     coin_name = entry.get().strip().lower()
+#     if not coin_name:
+#         messagebox.showwarning("Uyarı", "Lütfen bir coin ismi girin.")
+#         return
+
+#     if coin_name in coin_list:
+#         messagebox.showwarning("Uyarı", "Bu coin zaten listede mevcut.")
+#         return
+
+#     coin_list.append(coin_name)
+#     coin_listbox.insert("end", coin_name)
+#     entry.delete(0, "end")
+#     logging.info(f"Coin eklendi: {coin_name}")
+
+# def fetch_crypto_data():
+#     """Listedeki coinler için veri çeker ve Excel'e yaz."""
+#     if not coin_list:
+#         messagebox.showwarning("Uyarı", "Önce coin ekleyin.")
+#         return
+
+#     api_url = "https://api.coingecko.com/api/v3/coins/markets"
+#     params = {
+#         "vs_currency": "usd",
+#         "ids": ",".join(coin_list),  # Listedeki coinleri API'ye gönder
+#         "order": "market_cap_desc",
+#         "sparkline": False
+#     }
+
+#     try:
+#         response = requests.get(api_url, params=params)
+#         response.raise_for_status()  # HTTP hatalarını kontrol et
+
+#         data = response.json()
+#         if not data:
+#             messagebox.showwarning("Uyarı", "API'den geçerli bir veri alınamadı. Coin isimlerini kontrol edin.")
+#             logging.warning("API'den geçerli veri alınamadı.")
+#             return
+
+#         formatted_data = []
+#         current_date = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")  # Tarih ve saat
+
+#         for coin in data:
+#             formatted_data.append({
+#                 "Tarih": current_date,
+#                 "Coin": coin.get("name", "Bilinmiyor"),
+#                 "Değişim (24h)": f'{coin.get("price_change_percentage_24h", 0):.2f}%',
+#                 "Fiyat (USD)": f'${coin.get("current_price", 0):.6f}',
+#                 "Hacim (24h)": f'${coin.get("total_volume", 0):,}',
+#                 "Piyasa Değeri (USD)": f'${coin.get("market_cap", 0):,}',  # Piyasa değeri
+#                 "Dolaşımdaki Arz": f'{coin.get("circulating_supply", 0):,}',
+#                 "Toplam Arz": coin.get("total_supply", "Bilinmiyor")
+#             })
+
+#         df = pd.DataFrame(formatted_data)
+#         logging.info(f"İşlenen veri: {df}")
+
+#         # Excel'e veri yazma
+#         try:
+#             with pd.ExcelWriter(excel_file, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
+#                 sheet = writer.sheets.get("Sheet1", None)
+#                 startrow = sheet.max_row if sheet else 0
+#                 if startrow == 0:  # Başlıkları yalnızca bir kez yaz
+#                     df.to_excel(writer, sheet_name="Sheet1", index=False)
+#                 else:
+#                     df.to_excel(writer, sheet_name="Sheet1", index=False, header=False, startrow=startrow)
+#                 messagebox.showinfo("Başarılı", "Veriler başarıyla Excel dosyasına eklendi.")
+#                 logging.info("Veriler Excel dosyasına başarıyla yazıldı.")
+#         except FileNotFoundError:
+#             with pd.ExcelWriter(excel_file, engine="openpyxl") as writer:
+#                 df.to_excel(writer, sheet_name="Sheet1", index=False)
+#             messagebox.showinfo("Başarılı", "Yeni bir Excel dosyası oluşturuldu ve veriler yazıldı.")
+#             logging.info("Yeni Excel dosyası oluşturuldu ve veriler yazıldı.")
+
+#     except requests.exceptions.HTTPError as e:
+#         if response.status_code == 429:
+#             messagebox.showerror("Hata", "API limitine ulaşıldı. Lütfen daha sonra tekrar deneyin.")
+#         else:
+#             messagebox.showerror("Hata", f"API hatası: {response.status_code}")
+#         logging.error(f"API hatası: {e}")
+#     except Exception as e:
+#         messagebox.showerror("Hata", f"Veri alınırken bir hata oluştu: {e}")
+#         logging.error(f"Veri alınırken bir hata oluştu: {e}")
+
+# def search_and_display():
+#     """Belirtilen coinleri arar ve ekranda tablo olarak gösterir."""
+#     if not coin_list:
+#         messagebox.showwarning("Uyarı", "Önce coin ekleyin.")
+#         return
+
+#     api_url = "https://api.coingecko.com/api/v3/coins/markets"
+#     params = {
+#         "vs_currency": "usd",
+#         "ids": ",".join(coin_list),  # Listedeki coinleri API'ye gönder
+#         "order": "market_cap_desc",
+#         "sparkline": False
+#     }
+
+#     try:
+#         response = requests.get(api_url, params=params)
+#         response.raise_for_status()  # HTTP hatalarını kontrol et
+
+#         data = response.json()
+#         if not data:
+#             messagebox.showwarning("Uyarı", "API'den geçerli bir veri alınamadı.")
+#             logging.warning("API'den geçerli veri alınamadı.")
+#             return
+
+#         formatted_data = []
+#         for coin in data:
+#             formatted_data.append({
+#                 "Coin": coin.get("name", "Bilinmiyor"),
+#                 "Fiyat (USD)": f'${coin.get("current_price", 0):.6f}',
+#                 "Değişim (24h)": f'{coin.get("price_change_percentage_24h", 0):.2f}%',
+#                 "Hacim (24h)": f'${coin.get("total_volume", 0):,}'
+#             })
+
+#         # Pandas ile tablo oluşturma
+#         df = pd.DataFrame(formatted_data)
+#         logging.info(f"Arama sonucu: {df}")
+
+#         # Tabloyu ekranda göstermek
+#         display_text = df.to_string(index=False)
+#         messagebox.showinfo("Arama Sonucu", display_text)
+#         logging.info("Tablo ekranda görüntülendi.")
+
+#     except requests.exceptions.HTTPError as e:
+#         messagebox.showerror("Hata", f"API hatası: {e}")
+#         logging.error(f"API hatası: {e}")
+#     except Exception as e:
+#         messagebox.showerror("Hata", f"Veri alınırken bir hata oluştu: {e}")
+#         logging.error(f"Veri alınırken bir hata oluştu: {e}")
+
+# def load_from_excel():
+#     """Excel'deki coin isimlerini listeye ekler."""
+#     try:
+#         workbook = load_workbook(excel_file)
+#         if "Coin" in workbook.sheetnames:
+#             sheet = workbook["Coin"]
+#             for row in sheet.iter_rows(min_row=2, max_col=1, values_only=True):
+#                 coin_name = row[0]
+#                 if coin_name and coin_name.strip().lower() not in coin_list:  # Boşlukları temizle
+#                     coin_list.append(coin_name.strip().lower())
+#                     coin_listbox.insert("end", coin_name.strip().lower())
+#             messagebox.showinfo("Başarılı", "Excel'den coin isimleri yüklendi.")
+#             logging.info("Excel'den coin isimleri başarıyla yüklendi.")
+#         else:
+#             messagebox.showwarning("Hata", "'Coin' isimli sayfa bulunamadı.")
+#             logging.warning("'Coin' isimli sayfa bulunamadı.")
+#     except FileNotFoundError:
+#         messagebox.showerror("Hata", f"{excel_file} dosyası bulunamadı.")
+#         logging.error(f"Excel dosyası bulunamadı: {excel_file}")
+#     except Exception as e:
+#         messagebox.showerror("Hata", f"Excel yüklenirken bir hata oluştu: {e}")
+#         logging.error(f"Excel yüklenirken bir hata oluştu: {e}")
+
+# def clear_list():
+#     """Coin listesini temizler."""
+#     coin_list.clear()
+#     coin_listbox.delete(0, "end")
+#     logging.info("Coin listesi temizlendi.")
+
+# # GUI oluşturma
+# root = Tk()
+# root.title("Kripto Veri Çekme")
+# root.geometry("400x650")
+
+# Label(root, text="Coin İsmini Gir ve Ekle:").pack(pady=5)
+# entry = Entry(root, width=40)
+# entry.pack(pady=5)
+
+# Button(root, text="Ekle", command=add_coin).pack(pady=5)
+
+# Label(root, text="Eklenen Coinler:").pack(pady=10)
+# coin_listbox = Listbox(root, width=50, height=15)
+# coin_listbox.pack(pady=5)
+
+# # Button'ları ortalamak için Frame kullanalım
+# button_frame = Frame(root)
+# button_frame.pack(pady=20)
+
+# Button(button_frame, text="Veri Çek ve Sheet1'e Yaz", command=fetch_crypto_data).pack(side="left", padx=5)
+# Button(button_frame, text="Yeni Sayfa ve Ara", command=search_and_display).pack(side="left", padx=5)
+
+# Button(root, text="Listeyi Temizle", command=clear_list).pack(pady=5)
+# Button(root, text="Excel'den Yükle", command=load_from_excel).pack(pady=10)
+
+# root.mainloop()
+
+
+
+
+#v6  Coin sayfasını olduğu gibi bırak---------------------------------------------------------------------------------------------
+
+# import requests
+# import pandas as pd
+# from tkinter import Tk, Label, Entry, Button, Listbox, messagebox
+# from openpyxl import load_workbook
+# import logging
+
+# # Logging ayarları
+# logging.basicConfig(filename="crypto_app.log", level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# # Coin listesi
+# coin_list = []
+# excel_file = "crypto_data.xlsx"
+
+# def add_coin():
+#     """Coin ismini listeye ekler."""
+#     coin_name = entry.get().strip().lower()
+#     if not coin_name:
+#         messagebox.showwarning("Uyarı", "Lütfen bir coin ismi girin.")
+#         return
+
+#     if coin_name in coin_list:
+#         messagebox.showwarning("Uyarı", "Bu coin zaten listede mevcut.")
+#         return
+
+#     coin_list.append(coin_name)
+#     coin_listbox.insert("end", coin_name)
+#     entry.delete(0, "end")
+#     logging.info(f"Coin eklendi: {coin_name}")
+
+# def fetch_crypto_data():
+#     """Listedeki coinler için veri çeker ve Excel'e yaz."""
+#     if not coin_list:
+#         messagebox.showwarning("Uyarı", "Önce coin ekleyin.")
+#         return
+
+#     api_url = "https://api.coingecko.com/api/v3/coins/markets"
+#     params = {
+#         "vs_currency": "usd",
+#         "ids": ",".join(coin_list),  # Listedeki coinleri API'ye gönder
+#         "order": "market_cap_desc",
+#         "sparkline": False
+#     }
+
+#     try:
+#         response = requests.get(api_url, params=params)
+#         response.raise_for_status()  # HTTP hatalarını kontrol et
+
+#         data = response.json()
+#         if not data:
+#             messagebox.showwarning("Uyarı", "API'den geçerli bir veri alınamadı. Coin isimlerini kontrol edin.")
+#             logging.warning("API'den geçerli veri alınamadı.")
+#             return
+
+#         formatted_data = []
+#         current_date = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")  # Tarih ve saat
+
+#         for coin in data:
+#             formatted_data.append({
+#                 "Tarih": current_date,
+#                 "Coin": coin.get("name", "Bilinmiyor"),
+#                 "Değişim (24h)": f'{coin.get("price_change_percentage_24h", 0):.2f}%',
+#                 "Fiyat (USD)": f'${coin.get("current_price", 0):.6f}',
+#                 "Hacim (24h)": f'${coin.get("total_volume", 0):,}',
+#                 "Piyasa Değeri (USD)": f'${coin.get("market_cap", 0):,}',  # Piyasa değeri
+#                 "Dolaşımdaki Arz": f'{coin.get("circulating_supply", 0):,}',
+#                 "Toplam Arz": coin.get("total_supply", "Bilinmiyor")
+#             })
+
+#         df = pd.DataFrame(formatted_data)
+#         logging.info(f"İşlenen veri: {df}")
+
+#         # Excel'e veri yazma
+#         try:
+#             with pd.ExcelWriter(excel_file, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
+#                 sheet = writer.sheets.get("Sheet1", None)
+#                 startrow = sheet.max_row if sheet else 0
+#                 if startrow == 0:  # Başlıkları yalnızca bir kez yaz
+#                     df.to_excel(writer, sheet_name="Sheet1", index=False)
+#                 else:
+#                     df.to_excel(writer, sheet_name="Sheet1", index=False, header=False, startrow=startrow)
+#                 messagebox.showinfo("Başarılı", "Veriler başarıyla Excel dosyasına eklendi.")
+#                 logging.info("Veriler Excel dosyasına başarıyla yazıldı.")
+#         except FileNotFoundError:
+#             with pd.ExcelWriter(excel_file, engine="openpyxl") as writer:
+#                 df.to_excel(writer, sheet_name="Sheet1", index=False)
+#             messagebox.showinfo("Başarılı", "Yeni bir Excel dosyası oluşturuldu ve veriler yazıldı.")
+#             logging.info("Yeni Excel dosyası oluşturuldu ve veriler yazıldı.")
+
+#     except requests.exceptions.HTTPError as e:
+#         if response.status_code == 429:
+#             messagebox.showerror("Hata", "API limitine ulaşıldı. Lütfen daha sonra tekrar deneyin.")
+#         else:
+#             messagebox.showerror("Hata", f"API hatası: {response.status_code}")
+#         logging.error(f"API hatası: {e}")
+#     except Exception as e:
+#         messagebox.showerror("Hata", f"Veri alınırken bir hata oluştu: {e}")
+#         logging.error(f"Veri alınırken bir hata oluştu: {e}")
+
+# def load_from_excel():
+#     """Excel'deki coin isimlerini listeye ekler."""
+#     try:
+#         workbook = load_workbook(excel_file)
+#         if "Coin" in workbook.sheetnames:
+#             sheet = workbook["Coin"]
+#             for row in sheet.iter_rows(min_row=2, max_col=1, values_only=True):
+#                 coin_name = row[0]
+#                 if coin_name and coin_name.strip().lower() not in coin_list:  # Boşlukları temizle
+#                     coin_list.append(coin_name.strip().lower())
+#                     coin_listbox.insert("end", coin_name.strip().lower())
+#             messagebox.showinfo("Başarılı", "Excel'den coin isimleri yüklendi.")
+#             logging.info("Excel'den coin isimleri başarıyla yüklendi.")
+#         else:
+#             messagebox.showwarning("Hata", "'Coin' isimli sayfa bulunamadı.")
+#             logging.warning("'Coin' isimli sayfa bulunamadı.")
+#     except FileNotFoundError:
+#         messagebox.showerror("Hata", f"{excel_file} dosyası bulunamadı.")
+#         logging.error(f"Excel dosyası bulunamadı: {excel_file}")
+#     except Exception as e:
+#         messagebox.showerror("Hata", f"Excel yüklenirken bir hata oluştu: {e}")
+#         logging.error(f"Excel yüklenirken bir hata oluştu: {e}")
+
+# def clear_list():
+#     """Coin listesini temizler."""
+#     coin_list.clear()
+#     coin_listbox.delete(0, "end")
+#     logging.info("Coin listesi temizlendi.")
+
+# # GUI oluşturma
+# root = Tk()
+# root.title("Kripto Veri Çekme")
+# root.geometry("400x550")
+
+# Label(root, text="Coin İsmini Gir ve Ekle:").pack(pady=5)
+# entry = Entry(root, width=40)
+# entry.pack(pady=5)
+
+# Button(root, text="Ekle", command=add_coin).pack(pady=5)
+
+# Label(root, text="Eklenen Coinler:").pack(pady=10)
+# coin_listbox = Listbox(root, width=50, height=15)
+# coin_listbox.pack(pady=5)
+
+# Button(root, text="Veri Çek ve Sheet1'e Yaz", command=fetch_crypto_data).pack(pady=10)
+# Button(root, text="Listeyi Temizle", command=clear_list).pack(pady=5)
+# Button(root, text="Excel'den Yükle", command=load_from_excel).pack(pady=10)
+
+# root.mainloop()
+
+
 
 
 
