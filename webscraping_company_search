@@ -1,0 +1,161 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import pandas as pd
+import pyautogui
+import time
+import threading
+
+is_running = False  # İşlemi durdurmak için bayrak değişkeni
+kontrol_koordinatlari = None  # Renk kontrol koordinatları
+beklenen_renk = None  # Beklenen renk
+
+
+def select_coordinates_and_color():
+    global kontrol_koordinatlari, beklenen_renk
+    print("5 saniye içinde fareyi simge üzerine getirin...")
+    time.sleep(5)  # 5 saniye bekleme
+    x, y = pyautogui.position()
+    kontrol_koordinatlari = (x, y)
+    beklenen_renk = pyautogui.pixel(x, y)
+    print(f"Koordinatlar: ({x}, {y}), Renk: {beklenen_renk}")
+    messagebox.showinfo("Bilgi", f"Koordinatlar: ({x}, {y}), Renk: {beklenen_renk}")
+
+
+def get_excel_data(file_path, sheet_name):
+    try:
+        # Excel dosyasını yükle
+        df = pd.read_excel(file_path, sheet_name=sheet_name, engine="openpyxl")
+
+        # Sütun adlarını temizle
+        df.columns = df.columns.str.strip()
+
+        # Sadece gerekli sütunları seç
+        required_columns = ["Company_Name", "Country"]
+        df = df[required_columns]
+
+        return df
+    except Exception as e:
+        messagebox.showerror("Hata", f"Bir hata oluştu: {str(e)}")
+        return None
+
+
+def select_file():
+    file_path = filedialog.askopenfilename(title="Excel Dosyasını Seçin", filetypes=[("Excel Files", "*.xlsx")])
+    if file_path:
+        file_entry.delete(0, tk.END)
+        file_entry.insert(0, file_path)
+
+
+def stop_process():
+    global is_running
+    is_running = False
+    print("İşlem durduruldu!")
+
+
+def process_excel_thread():
+    global is_running
+    is_running = True
+
+    file_path = file_entry.get()
+    sheet_name = sheet_entry.get()
+    start_row = row_entry.get()
+
+    if not file_path or not sheet_name or not start_row:
+        messagebox.showerror("Hata", "Lütfen tüm alanları doldurun.")
+        return
+
+    if kontrol_koordinatlari is None or beklenen_renk is None:
+        messagebox.showerror("Hata", "Renk kontrolü için koordinatları belirleyin!")
+        return
+
+    try:
+        start_row = int(start_row)
+    except ValueError:
+        messagebox.showerror("Hata", "Başlangıç satırı bir sayı olmalıdır.")
+        return
+
+    df = get_excel_data(file_path, sheet_name)
+
+    if df is None:
+        return
+
+    # Başlangıç satırından itibaren işlem yap
+    for i in range(start_row - 1, len(df)):
+        if not is_running:
+            print("İşlem durduruldu.")
+            break
+
+        row_data = df.iloc[i]  # Satır verisi alınır
+
+        if pd.isnull(row_data["Company_Name"]) or pd.isnull(row_data["Country"]):
+            print("Boş satır bulundu. İşlem sonlandırılıyor.")
+            break
+
+        # Renk kontrolü yap
+        print("Renk kontrolü başlatıldı...")
+        while True:
+            if not is_running:
+                print("İşlem durduruldu.")
+                return
+
+            time.sleep(2)  # Renk kontrolü için bekleme süresi
+            mevcut_renk = pyautogui.pixel(kontrol_koordinatlari[0], kontrol_koordinatlari[1])
+            print(f"Renk kontrolü yapılıyor: {mevcut_renk}")
+            if mevcut_renk == beklenen_renk:
+                print(f"Beklenen renk tespit edildi! Sıradaki satır işleniyor.")
+                break
+
+        # Veriyi yaz
+        text_to_write = f"{row_data['Company_Name']} - {row_data['Country']}"
+        print(f"Satır {i + 1} işleniyor: {text_to_write}")
+        pyautogui.write(text_to_write)  # Veriyi yaz
+        pyautogui.press("enter")  # Enter tuşuna basarak işlem tamamlanır
+
+        # 3 saniye bekle
+        time.sleep(3)
+
+    print("İşlem tamamlandı veya durduruldu.")
+
+
+def start_process():
+    thread = threading.Thread(target=process_excel_thread)
+    thread.daemon = True
+    thread.start()
+
+
+# GUI oluştur
+root = tk.Tk()
+root.title("Excel Veri İşleme Aracı")
+
+# Dosya seçimi
+file_label = tk.Label(root, text="Excel Dosyası:")
+file_label.pack()
+file_entry = tk.Entry(root, width=50)
+file_entry.pack()
+file_button = tk.Button(root, text="Dosya Seç", command=select_file)
+file_button.pack()
+
+# Sayfa adı
+sheet_label = tk.Label(root, text="Çalışma Sayfası Adı:")
+sheet_label.pack()
+sheet_entry = tk.Entry(root)
+sheet_entry.pack()
+
+# Başlangıç satırı
+row_label = tk.Label(root, text="Başlangıç Satırı:")
+row_label.pack()
+row_entry = tk.Entry(root)
+row_entry.pack()
+
+# Renk ve koordinat ayarları
+set_coordinates_button = tk.Button(root, text="Renk ve Koordinat Belirle", command=select_coordinates_and_color)
+set_coordinates_button.pack()
+
+# İşlemi başlat ve durdur
+process_button = tk.Button(root, text="Verileri İşle", command=start_process)
+process_button.pack()
+stop_button = tk.Button(root, text="Durdur", command=stop_process)
+stop_button.pack()
+
+root.mainloop()
+
